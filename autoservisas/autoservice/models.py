@@ -1,56 +1,85 @@
 from django.db import models
-
+from datetime import date
 # Create your models here.
 
 
-class Paslauga(models.Model):
-    pavadinimas = models.CharField('pavadinimas', max_length = 250, null=False)
-    kaina = models.IntegerField('kaina', null = False)
+class Service(models.Model):
+    service_name = models.CharField('service_name', max_length = 50)
+    price = models.DecimalField('price', max_digits =10, decimal_places =2)
     
     def __str__(self) -> str:
-        return f"{self.pavadinimas} {self.kaina}"
+        return f"{self.service_name} {self.price}"
     
     class Meta:
-        ordering = ['pavadinimas']
+        ordering = ['service_name']
+        verbose_name = 'service'
+        verbose_name_plural = 'services'
 
-class AutomobilioModelis(models.Model):
-    marke = models.CharField('marke', max_length = 250, null=False)
-    modelis = models.CharField('modelis', max_length = 250)
+
+class CarModel(models.Model):
+    YEARS_CHOICES = ((metai, str(metai)) for metai in reversed(range(1899, date.today().year+1)))
+    make = models.CharField('make', max_length = 50)
+    car_model = models.CharField('car_model', max_length = 50)
+    year = models.IntegerField('year', choices=YEARS_CHOICES)
+    engine = models.CharField('engine', max_length = 50)
 
     def __str__(self) -> str:
-        return f"{self.marke} {self.modelis}"
+        return f"{self.make} {self.car_model} ({self.year}) {self.engine}"
     
     class Meta:
-        ordering = ['marke', 'modelis']
+        ordering = ['make', 'car_model']
+        verbose_name = "car model"
+        verbose_name_plural = "car models"
 
-class Automobilis(models.Model):
-    valstybinis_nr = models.CharField('valstybinis_nr', max_length=13, null=False)
-    automobilio_modelis = models.ForeignKey(AutomobilioModelis, on_delete= models.SET_NULL, null= True, blank= True )
-    vin_kodas = models.CharField('vin_kodas', max_length = 15, null= False)
-    klientas = models.CharField('klientas', max_length= 250, null= False)
+
+class Car(models.Model):
+    license_plate = models.CharField('license_plate', max_length=10)
+    car_model = models.ForeignKey(CarModel, on_delete= models.CASCADE, related_name='cars', )
+    vin_code = models.CharField('vin_code', max_length = 20)
+    client = models.CharField('client', max_length= 250)
 
     def __str__(self) -> str:
-        return f"{self.valstybinis_nr}, {self.automobilio_modelis.modelis}, {self.vin_kodas}, {self.klientas}"
+        return f"{self.license_plate}, {self.car_model.car_model}, {self.client}"
 
     class Meta:
-        ordering = ['klientas', 'valstybinis_nr']
+        ordering = ['client', 'license_plate']
+        verbose_name = 'car'
+        verbose_name_plural = 'cars'
 
-class Uzsakymas(models.Model):
-    data = models.DateField('data', null=False)
-    automobilis = models.ForeignKey(Automobilis, on_delete=models.SET_NULL, null=True, blank=True)
-    suma = models.FloatField('suma', null=False)
+
+class Order(models.Model):
+    date = models.DateField('date', auto_now_add=True)
+    car = models.ForeignKey(Car, on_delete=models.CASCADE, verbose_name='car', related_name='orders')
+    total = models.DecimalField('total', max_digits = 10, decimal_places = 2, default= 0)
+
+    def get_total(self):
+        total = 0
+        for line in self.order_lines.all():
+            total += line.total
+        return total
+    
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            self.total = self.get_total()
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        return f"{self.data} {self.automobilis} {self.suma}"
+        return f"{self.date}: {self.total}"
+
+
+class OrderEntry(models.Model):
+    service = models.ForeignKey(Service, on_delete= models.CASCADE, verbose_name= 'service', related_name='order_lines')
+    order = models.ForeignKey(Order, on_delete= models.CASCADE, verbose_name= 'order', related_name='order_lines')
+    quantity = models.IntegerField('quantity', default=1)
+    price = models.DecimalField('price', max_digits =10, decimal_places =2)
+
+    @property
+    def total(self):
+        return self.quantity * self.price
+        
+    def __str__(self) -> str:
+        return f"{self.service.service_name}, {self.quantity} x {self.price}"
 
     class Meta:
-        ordering = ['data']
-
-class UzsakymoEilute(models.Model):
-    paslauga = models.ForeignKey(Paslauga, on_delete= models.SET_NULL, null= True, blank= True)
-    uzsakymas = models.ForeignKey(Uzsakymas, on_delete= models.SET_NULL, null= True, blank= True)
-    kiekis = models.IntegerField('kiekis', null= False)
-    kaina = models.FloatField('kaina', null= False)
-
-    def __str__(self) -> str:
-        return f"{self.paslauga.pavadinimas}, {self.uzsakymas}, {self.kiekis}, {self.kaina}"
+        verbose_name = 'order entry'
+        verbose_name_plural = 'order entries'
